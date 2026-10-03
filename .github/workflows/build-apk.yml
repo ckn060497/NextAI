@@ -26,14 +26,44 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Check Flutter
+        run: |
+          flutter --version
+          flutter doctor -v
+
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build release APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+      - name: Build APK with Gradle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew app:assembleRelease --stacktrace
+
+      - name: Find generated APK
+        run: |
+          echo "Searching for APK files..."
+          find . -type f -name "*.apk" -print
+
+      - name: Prepare APK
+        run: |
+          mkdir -p release-apk
+
+          APK=$(find android/app/build/outputs -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK was generated."
+            echo "Checking build directories:"
+            find android/app/build -maxdepth 6 -type f | head -200
+            exit 1
+          fi
+
+          echo "Found APK: $APK"
+          cp "$APK" release-apk/nexus-ai-release.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: nexus-ai-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: release-apk/nexus-ai-release.apk
+          if-no-files-found: error
