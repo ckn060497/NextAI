@@ -26,24 +26,34 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Check Flutter
-        run: |
-          flutter --version
-          flutter doctor -v
+      - name: Check Flutter version
+        run: flutter --version
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK with Gradle
+      - name: Force Gradle 8.14
+        working-directory: android
+        run: |
+          sed -i 's#gradle-[0-9.]*-bin.zip#gradle-8.14-bin.zip#' gradle/wrapper/gradle-wrapper.properties
+          echo "Gradle wrapper configuration:"
+          cat gradle/wrapper/gradle-wrapper.properties
+
+      - name: Verify Gradle version
         working-directory: android
         run: |
           chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build release APK
+        working-directory: android
+        run: |
           ./gradlew app:assembleRelease --stacktrace
 
-      - name: Find generated APK
+      - name: Find APK
         run: |
-          echo "Searching for APK files..."
-          find . -type f -name "*.apk" -print
+          echo "Searching for generated APK..."
+          find android/app/build/outputs -type f -name "*.apk" -print
 
       - name: Prepare APK
         run: |
@@ -52,9 +62,7 @@ jobs:
           APK=$(find android/app/build/outputs -type f -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERROR: No APK was generated."
-            echo "Checking build directories:"
-            find android/app/build -maxdepth 6 -type f | head -200
+            echo "ERROR: APK was not generated."
             exit 1
           fi
 
