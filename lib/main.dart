@@ -1,74 +1,23 @@
-import 'dart:ui' as ui;
+```dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-const apiUrl = String.fromEnvironment(
-  'API_URL',
-  defaultValue: 'https://example.com/nexus-ai-api',
-);
-
-class ApiNotFoundPage extends StatelessWidget {
-  final String? path;
-
-  const ApiNotFoundPage({super.key, this.path});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Not Found'),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.search_off,
-                size: 72,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                '404',
-                style: TextStyle(
-                  fontSize: 56,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Backend endpoint not found',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                path == null
-                    ? 'The API server is not deployed yet or this endpoint does not exist.'
-                    : 'The requested API endpoint was not found:\n$path',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Go back'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// Nexus AI - Offline / No Backend Version
+///
+/// This version:
+/// - Does not connect to a backend
+/// - Does not require authentication
+/// - Keeps chat history locally
+/// - Allows local file selection
+/// - Keeps the existing main navigation
+/// - Provides local/demo AI responses
+///
+/// No API_URL or backend server is required.
 
 class DebugLog {
   static final List<String> entries = [];
@@ -131,7 +80,7 @@ class DebugConsolePage extends StatelessWidget {
         builder: (_, __, ___) {
           if (DebugLog.entries.isEmpty) {
             return const Center(
-              child: Text('No runtime logs yet. Try an API action.'),
+              child: Text('No runtime logs yet.'),
             );
           }
 
@@ -139,15 +88,17 @@ class DebugConsolePage extends StatelessWidget {
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: DebugLog.entries.length,
-              itemBuilder: (_, i) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  DebugLog.entries[i],
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
+              itemBuilder: (_, i) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    DebugLog.entries[i],
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           );
         },
@@ -156,320 +107,722 @@ class DebugConsolePage extends StatelessWidget {
   }
 }
 
-class ApiException implements Exception {
-  final String message;
-  final int? statusCode;
+/// Local application storage.
+///
+/// Nothing is sent to a server.
+class LocalStorage {
+  static const String chatKey = 'offline_messages';
+  static const String filesKey = 'offline_files';
 
-  ApiException(
-    this.message, {
-    this.statusCode,
-  });
+  static Future<List<Map<String, dynamic>>> loadMessages() async {
+    final prefs = await SharedPreferences.getInstance();
 
-  @override
-  String toString() => message;
-}
+    final raw = prefs.getString(chatKey);
 
-class Api {
-  String? tok;
-
-  Future<void> load() async {
-    tok = (await SharedPreferences.getInstance()).getString('token');
-
-    DebugLog.add(
-      'App storage loaded; token=${tok == null ? "absent" : "present"}',
-    );
-  }
-
-  Map<String, String> get headers => {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        if (tok != null) 'Authorization': 'Bearer $tok',
-      };
-
-  Uri uri(String path) {
-    final u = Uri.parse(
-      '${apiUrl.replaceFirst(RegExp(r'/+$'), '')}'
-      '${path.startsWith('/') ? path : '/$path'}',
-    );
-
-    return u;
-  }
-
-  dynamic decode(http.Response response) {
-    dynamic body;
-
-    try {
-      body = response.body.isEmpty ? null : jsonDecode(response.body);
-    } catch (_) {
-      body = null;
+    if (raw == null || raw.isEmpty) {
+      return [];
     }
 
-    DebugLog.add(
-      'HTTP ${response.statusCode} <- '
-      '${response.request?.method ?? "?"} '
-      '${response.request?.url ?? ""}',
-    );
-
-    if (response.statusCode >= 400) {
-      final detail = body is Map && body['detail'] != null
-          ? body['detail'].toString()
-          : 'API request failed (${response.statusCode})';
-
-      DebugLog.error('API error: $detail');
-
-      throw ApiException(
-        detail,
-        statusCode: response.statusCode,
-      );
-    }
-
-    return body;
-  }
-
-  Future<dynamic> get(String path) async {
-    final u = uri(path);
-
-    DebugLog.add('GET -> $u');
-
     try {
-      final r = await http
-          .get(
-            u,
-            headers: headers,
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
+      final decoded = jsonDecode(raw);
 
-      return decode(r);
-    } catch (e, st) {
-      final err = _networkError(e);
-
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map(
+              (item) => Map<String, dynamic>.from(item),
+            )
+            .toList();
+      }
+    } catch (e) {
       DebugLog.error(
-        'GET failed: $u',
-        err,
-        st,
+        'Could not load local messages.',
+        e,
       );
-
-      throw err;
     }
+
+    return [];
   }
 
-  Future<dynamic> post(
-    String path,
-    Map<String, dynamic> body,
+  static Future<void> saveMessages(
+    List<Map<String, dynamic>> messages,
   ) async {
-    final u = uri(path);
+    final prefs = await SharedPreferences.getInstance();
 
-    DebugLog.add('POST -> $u');
-
-    try {
-      final r = await http
-          .post(
-            u,
-            headers: headers,
-            body: jsonEncode(body),
-          )
-          .timeout(
-            const Duration(seconds: 90),
-          );
-
-      return decode(r);
-    } catch (e, st) {
-      final err = _networkError(e);
-
-      DebugLog.error(
-        'POST failed: $u',
-        err,
-        st,
-      );
-
-      throw err;
-    }
+    await prefs.setString(
+      chatKey,
+      jsonEncode(messages),
+    );
   }
 
-  Future<bool> auth(
-    String path,
-    String email,
-    String password,
+  static Future<List<String>> loadFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getStringList(filesKey) ?? [];
+  }
+
+  static Future<void> saveFiles(
+    List<String> files,
   ) async {
-    final u = uri(path);
+    final prefs = await SharedPreferences.getInstance();
 
-    DebugLog.add('AUTH POST -> $u');
-
-    try {
-      final r = await http
-          .post(
-            u,
-            headers: headers,
-            body: jsonEncode({
-              'email': email,
-              'password': password,
-            }),
-          )
-          .timeout(
-            const Duration(seconds: 30),
-          );
-
-      final body = decode(r);
-
-      if (body is! Map || body['token'] == null) {
-        DebugLog.error(
-          'Authentication response did not contain a token.',
-        );
-
-        return false;
-      }
-
-      tok = body['token'].toString();
-
-      final sp = await SharedPreferences.getInstance();
-
-      await sp.setString(
-        'token',
-        tok!,
-      );
-
-      DebugLog.add(
-        'Authentication succeeded.',
-      );
-
-      return true;
-    } catch (e, st) {
-      final err = _networkError(e);
-
-      DebugLog.error(
-        'Authentication failed',
-        err,
-        st,
-      );
-
-      return false;
-    }
+    await prefs.setStringList(
+      filesKey,
+      files,
+    );
   }
 
-  Future<void> upload() async {
-    DebugLog.add(
-      'Opening file picker...',
-    );
+  static Future<void> clearAll() async {
+    final prefs = await SharedPreferences.getInstance();
 
-    final f = await FilePicker.platform.pickFiles(
-      withData: true,
-    );
-
-    if (f == null) {
-      DebugLog.add(
-        'File picker cancelled.',
-      );
-
-      return;
-    }
-
-    final x = f.files.single;
-
-    if (x.bytes == null) {
-      throw ApiException(
-        'Could not read the selected file.',
-      );
-    }
-
-    final u = uri('/files');
-
-    DebugLog.add(
-      'UPLOAD -> $u (${x.name})',
-    );
-
-    try {
-      final req = http.MultipartRequest(
-        'POST',
-        u,
-      );
-
-      req.headers['Accept'] = 'application/json';
-
-      if (tok != null) {
-        req.headers['Authorization'] = 'Bearer $tok';
-      }
-
-      req.files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          x.bytes!,
-          filename: x.name,
-        ),
-      );
-
-      final response = await req
-          .send()
-          .timeout(
-            const Duration(seconds: 90),
-          );
-
-      final body = await response.stream.bytesToString();
-
-      DebugLog.add(
-        'UPLOAD response: ${response.statusCode}',
-      );
-
-      if (response.statusCode >= 400) {
-        dynamic parsed;
-
-        try {
-          parsed = jsonDecode(body);
-        } catch (_) {}
-
-        throw ApiException(
-          parsed is Map && parsed['detail'] != null
-              ? parsed['detail'].toString()
-              : 'Upload failed (${response.statusCode})',
-          statusCode: response.statusCode,
-        );
-      }
-
-      DebugLog.add(
-        'Upload succeeded.',
-      );
-    } catch (e, st) {
-      final err = _networkError(e);
-
-      DebugLog.error(
-        'Upload failed',
-        err,
-        st,
-      );
-
-      throw err;
-    }
-  }
-
-  Exception _networkError(Object error) {
-    if (error is ApiException) {
-      return error;
-    }
-
-    if (error is TimeoutException) {
-      return ApiException(
-        'The backend request timed out. '
-        'Check the API server and API_URL.',
-      );
-    }
-
-    if (error is http.ClientException) {
-      return ApiException(
-        'Cannot reach the Nexus AI backend at $apiUrl.',
-      );
-    }
-
-    return ApiException(
-      'Backend connection failed: $error',
-    );
+    await prefs.remove(chatKey);
+    await prefs.remove(filesKey);
   }
 }
 
-final api = Api();
+/// Local AI/demo engine.
+///
+/// This deliberately does not make an HTTP request.
+class LocalAI {
+  static String generateReply(String message) {
+    final text = message.trim().toLowerCase();
+
+    if (text.isEmpty) {
+      return 'Please enter a message.';
+    }
+
+    if (text.contains('hello') ||
+        text.contains('hi') ||
+        text.contains('hey')) {
+      return 'Hello! I am Nexus AI running in offline mode. '
+          'No backend connection is required.';
+    }
+
+    if (text.contains('who are you') ||
+        text.contains('what are you')) {
+      return 'I am Nexus AI running in local demo mode. '
+          'The current version does not use a backend server.';
+    }
+
+    if (text.contains('backend')) {
+      return 'The backend is disabled in this version. '
+          'Chat responses are generated locally for testing the app UI.';
+    }
+
+    if (text.contains('help')) {
+      return 'I can help you test the Nexus AI interface, '
+          'navigation, local chat history, and file selection.';
+    }
+
+    if (text.contains('thank')) {
+      return 'You are welcome!';
+    }
+
+    if (text.contains('time')) {
+      final now = DateTime.now();
+
+      return 'Your device time is '
+          '${now.hour.toString().padLeft(2, '0')}:'
+          '${now.minute.toString().padLeft(2, '0')}.';
+    }
+
+    return 'Offline demo response:\n\n'
+        'I received your message:\n'
+        '"$message"\n\n'
+        'The Nexus AI backend is currently disabled, so this '
+        'response was generated locally.';
+  }
+}
+
+/// Local file manager.
+///
+/// Files are NOT uploaded anywhere.
+class LocalFiles {
+  static Future<String?> pickFile() async {
+    DebugLog.add('Opening local file picker...');
+
+    final result = await FilePicker.platform.pickFiles(
+      withData: false,
+    );
+
+    if (result == null) {
+      DebugLog.add('File picker cancelled.');
+      return null;
+    }
+
+    final file = result.files.single;
+
+    DebugLog.add(
+      'Selected local file: ${file.name}',
+    );
+
+    final files = await LocalStorage.loadFiles();
+
+    if (!files.contains(file.name)) {
+      files.add(file.name);
+      await LocalStorage.saveFiles(files);
+    }
+
+    return file.name;
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (
+    FlutterErrorDetails details,
+  ) {
+    FlutterError.presentError(details);
+
+    DebugLog.error(
+      'Flutter framework error',
+      details.exception,
+      details.stack,
+    );
+  };
+
+  ui.PlatformDispatcher.instance.onError =
+      (Object error, StackTrace stack) {
+    DebugLog.error(
+      'Uncaught asynchronous error',
+      error,
+      stack,
+    );
+
+    return true;
+  };
+
+  DebugLog.add('Nexus AI started.');
+  DebugLog.add('OFFLINE MODE enabled.');
+  DebugLog.add('Backend connection disabled.');
+  DebugLog.add('Authentication disabled.');
+
+  runApp(
+    const App(),
+  );
+}
+
+class App extends StatelessWidget {
+  const App({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Nexus AI',
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.deepPurple,
+      ),
+
+      // Directly open Home.
+      //
+      // No Login screen.
+      home: const Home(),
+    );
+  }
+}
+
+/// Kept in the project as a page, but it is no longer required.
+class Login extends StatelessWidget {
+  const Login({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Card(
+          margin: const EdgeInsets.all(24),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.lock_open,
+                  size: 56,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Authentication Disabled',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'This offline version does not require '
+                  'authentication.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const Home(),
+                      ),
+                    );
+                  },
+                  child: const Text('Open Nexus AI'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class Home extends StatefulWidget {
+  const Home({super.key});
+
+  @override
+  State<Home> createState() => _HomeState();
+}
+
+class _HomeState extends State<Home> {
+  int page = 0;
+
+  List<Map<String, dynamic>> msgs = [];
+
+  List<String> files = [];
+
+  final input = TextEditingController();
+
+  bool loading = false;
+
+  final labels = [
+    'Chats',
+    'Projects',
+    'Files',
+    'Agents',
+    'Research',
+    'Images',
+    'Settings',
+  ];
+
+  final icons = [
+    Icons.chat,
+    Icons.folder,
+    Icons.description,
+    Icons.smart_toy,
+    Icons.search,
+    Icons.image,
+    Icons.settings,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    loadLocalData();
+  }
+
+  Future<void> loadLocalData() async {
+    DebugLog.add(
+      'Loading local application data...',
+    );
+
+    final savedMessages =
+        await LocalStorage.loadMessages();
+
+    final savedFiles =
+        await LocalStorage.loadFiles();
+
+    if (!mounted) return;
+
+    setState(() {
+      msgs = savedMessages;
+      files = savedFiles;
+    });
+
+    DebugLog.add(
+      'Local data loaded: '
+      '${msgs.length} messages, '
+      '${files.length} files.',
+    );
+  }
+
+  Future<void> send() async {
+    final text = input.text.trim();
+
+    if (text.isEmpty || loading) {
+      return;
+    }
+
+    input.clear();
+
+    setState(() {
+      loading = true;
+
+      msgs.add({
+        'role': 'user',
+        'content': text,
+      });
+    });
+
+    await LocalStorage.saveMessages(msgs);
+
+    DebugLog.add(
+      'Local message added.',
+    );
+
+    // Small delay to make the UI feel like an AI response.
+    await Future.delayed(
+      const Duration(milliseconds: 500),
+    );
+
+    final reply = LocalAI.generateReply(text);
+
+    if (!mounted) return;
+
+    setState(() {
+      msgs.add({
+        'role': 'assistant',
+        'content': reply,
+      });
+
+      loading = false;
+    });
+
+    await LocalStorage.saveMessages(msgs);
+
+    DebugLog.add(
+      'Local AI response generated.',
+    );
+  }
+
+  Future<void> attachFile() async {
+    try {
+      final name = await LocalFiles.pickFile();
+
+      if (name == null || !mounted) {
+        return;
+      }
+
+      setState(() {
+        if (!files.contains(name)) {
+          files.add(name);
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'File added locally: $name',
+          ),
+        ),
+      );
+
+      DebugLog.add(
+        'File stored locally: $name',
+      );
+    } catch (e, st) {
+      DebugLog.error(
+        'Local file selection failed',
+        e,
+        st,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not select file: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> clearChat() async {
+    setState(() {
+      msgs.clear();
+    });
+
+    await LocalStorage.saveMessages(msgs);
+
+    DebugLog.add(
+      'Local chat history cleared.',
+    );
+  }
+
+  Future<void> clearLocalData() async {
+    await LocalStorage.clearAll();
+
+    if (!mounted) return;
+
+    setState(() {
+      msgs.clear();
+      files.clear();
+    });
+
+    DebugLog.add(
+      'All local data cleared.',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Local data cleared.',
+        ),
+      ),
+    );
+  }
+
+  Widget chat() {
+    return Column(
+      children: [
+        Expanded(
+          child: msgs.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 64,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'What can I help you with today?',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Nexus AI is running in offline mode.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: msgs.length,
+                  itemBuilder: (context, index) {
+                    final message = msgs[index];
+
+                    final isUser =
+                        message['role'] == 'user';
+
+                    return Align(
+                      alignment: isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(
+                          bottom: 12,
+                        ),
+                        padding: const EdgeInsets.all(14),
+                        constraints:
+                            const BoxConstraints(
+                          maxWidth: 700,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius:
+                              BorderRadius.circular(16),
+                          color: isUser
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                        ),
+                        child: Text(
+                          message['content']
+                              ?.toString() ??
+                              '',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              bottom: 8,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Text('Thinking...'),
+                ],
+              ),
+            ),
+          ),
+
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: 'Attach local file',
+                onPressed:
+                    loading ? null : attachFile,
+                icon: const Icon(
+                  Icons.attach_file,
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: input,
+                  onSubmitted: (_) => send(),
+                  minLines: 1,
+                  maxLines: 5,
+                  decoration:
+                      const InputDecoration(
+                    hintText: 'Ask anything...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                tooltip: 'Send',
+                onPressed:
+                    loading ? null : send,
+                icon: const Icon(
+                  Icons.send,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget projects() {
+    return _modulePage(
+      icon: Icons.folder,
+      title: 'Projects',
+      description:
+          'Projects are available in offline demo mode.',
+      child: FilledButton.icon(
+        onPressed: () {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Project creation is running locally.',
+              ),
+            ),
+          );
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Create Project'),
+      ),
+    );
+  }
+
+  Widget filesPage() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Files',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Files selected here stay on this device. '
+            'They are not uploaded to a backend.',
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: attachFile,
+            icon: const Icon(
+              Icons.upload_file,
+            ),
+            label: const Text(
+              'Select Local File',
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: files.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No local files selected.',
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: files.length,
+                    itemBuilder: (_, index) {
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.insert_drive_file,
+                          ),
+                          title: Text(
+                            files[index],
+                          ),
+                          subtitle:
+                              const Text(
+                            'Stored locally',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget agents() {
+    return _modulePage(
+      icon: Icons.smart_toy,
+      title: 'Agents',
+      description:
+          'Agent interface is available without a backend.',
+      child: FilledButton(
+        onPressed: () {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Agent execution requires a backend or AI provider.',
+              ),
+            ),
+          );
+        },
+       ialized();
 
   FlutterError.onError = (
     FlutterErrorDetails details,
