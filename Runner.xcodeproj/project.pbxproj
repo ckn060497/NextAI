@@ -1,0 +1,3 @@
+// !$*UTF8*$!
+/* Minimal Xcode project placeholder.
+   FlutLab/Flutter tooling can regenerate platform project files when required. */
