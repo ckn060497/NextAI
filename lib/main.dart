@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
@@ -6,300 +5,185 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Nexus AI - Offline / No Backend Version
-///
-/// This version:
-/// - Does not connect to a backend
-/// - Does not require authentication
-/// - Keeps chat history locally
-/// - Allows local file selection
-/// - Keeps the existing main navigation
-/// - Provides local/demo AI responses
-///
-/// No API_URL or backend server is required.
-
 class DebugLog {
-  static final List<String> entries = [];
-  static final ValueNotifier<int> version = ValueNotifier<int>(0);
+  static final List<String> entries = <String>[];
 
   static void add(String message) {
-    final line =
-        '[${DateTime.now().toIso8601String().substring(11, 19)}] $message';
-
+    final line = '${DateTime.now().toIso8601String()}  $message';
     entries.add(line);
-
     if (entries.length > 300) {
       entries.removeAt(0);
     }
-
     debugPrint(line);
-    version.value++;
-  }
-
-  static void error(
-    String message, [
-    Object? error,
-    StackTrace? stack,
-  ]) {
-    add('ERROR: $message');
-
-    if (error != null) {
-      add('DETAIL: $error');
-    }
-
-    if (stack != null) {
-      debugPrintStack(stackTrace: stack);
-    }
-  }
-
-  static void clear() {
-    entries.clear();
-    version.value++;
   }
 }
 
-class DebugConsolePage extends StatelessWidget {
+class DebugConsolePage extends StatefulWidget {
   const DebugConsolePage({super.key});
 
+  @override
+  State<DebugConsolePage> createState() => _DebugConsolePageState();
+}
+
+class _DebugConsolePageState extends State<DebugConsolePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Nexus AI Debug Console'),
+        title: const Text('Debug Console'),
         actions: [
           IconButton(
             tooltip: 'Clear logs',
-            onPressed: DebugLog.clear,
+            onPressed: () {
+              DebugLog.entries.clear();
+              setState(() {});
+            },
             icon: const Icon(Icons.delete_outline),
           ),
         ],
       ),
-      body: ValueListenableBuilder<int>(
-        valueListenable: DebugLog.version,
-        builder: (_, __, ___) {
-          if (DebugLog.entries.isEmpty) {
-            return const Center(
-              child: Text('No runtime logs yet.'),
-            );
-          }
-
-          return SelectionArea(
-            child: ListView.builder(
+      body: DebugLog.entries.isEmpty
+          ? const Center(child: Text('No debug messages yet.'))
+          : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: DebugLog.entries.length,
-              itemBuilder: (_, i) {
+              itemBuilder: (context, index) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    DebugLog.entries[i],
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                    ),
+                  child: SelectableText(
+                    DebugLog.entries[index],
+                    style: const TextStyle(fontFamily: 'monospace'),
                   ),
                 );
               },
             ),
-          );
-        },
-      ),
     );
   }
 }
 
-/// Local application storage.
-///
-/// Nothing is sent to a server.
 class LocalStorage {
-  static const String chatKey = 'offline_messages';
+  static const String messagesKey = 'offline_messages';
   static const String filesKey = 'offline_files';
 
   static Future<List<Map<String, dynamic>>> loadMessages() async {
     final prefs = await SharedPreferences.getInstance();
-
-    final raw = prefs.getString(chatKey);
+    final raw = prefs.getString(messagesKey);
 
     if (raw == null || raw.isEmpty) {
-      return [];
+      return <Map<String, dynamic>>[];
     }
 
     try {
       final decoded = jsonDecode(raw);
-
-      if (decoded is List) {
-        return decoded
-            .whereType<Map>()
-            .map(
-              (item) => Map<String, dynamic>.from(item),
-            )
-            .toList();
+      if (decoded is! List) {
+        return <Map<String, dynamic>>[];
       }
-    } catch (e) {
-      DebugLog.error(
-        'Could not load local messages.',
-        e,
-      );
-    }
 
-    return [];
+      return decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (e) {
+      DebugLog.add('Could not load messages: $e');
+      return <Map<String, dynamic>>[];
+    }
   }
 
   static Future<void> saveMessages(
     List<Map<String, dynamic>> messages,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setString(
-      chatKey,
-      jsonEncode(messages),
-    );
+    await prefs.setString(messagesKey, jsonEncode(messages));
   }
 
   static Future<List<String>> loadFiles() async {
     final prefs = await SharedPreferences.getInstance();
-
-    return prefs.getStringList(filesKey) ?? [];
+    return prefs.getStringList(filesKey) ?? <String>[];
   }
 
-  static Future<void> saveFiles(
-    List<String> files,
-  ) async {
+  static Future<void> saveFiles(List<String> files) async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      filesKey,
-      files,
-    );
+    await prefs.setStringList(filesKey, files);
   }
 
   static Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
-
-    await prefs.remove(chatKey);
+    await prefs.remove(messagesKey);
     await prefs.remove(filesKey);
   }
 }
 
-/// Local AI/demo engine.
-///
-/// This deliberately does not make an HTTP request.
 class LocalAI {
-  static String generateReply(String message) {
-    final text = message.trim().toLowerCase();
+  static Future<String> generateReply(String prompt) async {
+    await Future<void>.delayed(const Duration(milliseconds: 450));
 
-    if (text.isEmpty) {
-      return 'Please enter a message.';
+    final text = prompt.trim();
+    final lower = text.toLowerCase();
+
+    if (lower.contains('hello') ||
+        lower.contains('hi') ||
+        lower.contains('hey')) {
+      return 'Hello! I am running in offline mode. '
+          'I can demonstrate the chat interface without a backend.';
     }
 
-    if (text.contains('hello') ||
-        text.contains('hi') ||
-        text.contains('hey')) {
-      return 'Hello! I am Nexus AI running in offline mode. '
-          'No backend connection is required.';
-    }
-
-    if (text.contains('who are you') ||
-        text.contains('what are you')) {
+    if (lower.contains('who are you') || lower.contains('what are you')) {
       return 'I am Nexus AI running in local demo mode. '
-          'The current version does not use a backend server.';
+          'No server or authentication is being used.';
     }
 
-    if (text.contains('backend')) {
-      return 'The backend is disabled in this version. '
-          'Chat responses are generated locally for testing the app UI.';
+    if (lower.contains('help')) {
+      return 'Try sending a message, attaching a local file, or opening '
+          'Projects, Files, Agents, Research, Images, and Settings.';
     }
 
-    if (text.contains('help')) {
-      return 'I can help you test the Nexus AI interface, '
-          'navigation, local chat history, and file selection.';
+    if (lower.contains('offline')) {
+      return 'Offline mode is active. Messages and selected file names are '
+          'stored locally on this device.';
     }
 
-    if (text.contains('thank')) {
-      return 'You are welcome!';
-    }
-
-    if (text.contains('time')) {
-      final now = DateTime.now();
-
-      return 'Your device time is '
-          '${now.hour.toString().padLeft(2, '0')}:'
-          '${now.minute.toString().padLeft(2, '0')}.';
-    }
-
-    return 'Offline demo response:\n\n'
-        'I received your message:\n'
-        '"$message"\n\n'
-        'The Nexus AI backend is currently disabled, so this '
-        'response was generated locally.';
+    return 'Offline demo response: I received your message:\n\n"$text"\n\n'
+        'A real AI response requires either your backend API or an '
+        'on-device AI model.';
   }
 }
 
-/// Local file manager.
-///
-/// Files are NOT uploaded anywhere.
 class LocalFiles {
   static Future<String?> pickFile() async {
-    DebugLog.add('Opening local file picker...');
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+      );
 
-    final result = await FilePicker.platform.pickFiles(
-      withData: false,
-    );
+      if (result == null || result.files.isEmpty) {
+        return null;
+      }
 
-    if (result == null) {
-      DebugLog.add('File picker cancelled.');
+      return result.files.single.name;
+    } catch (e) {
+      DebugLog.add('File picker error: $e');
       return null;
     }
-
-    final file = result.files.single;
-
-    DebugLog.add(
-      'Selected local file: ${file.name}',
-    );
-
-    final files = await LocalStorage.loadFiles();
-
-    if (!files.contains(file.name)) {
-      files.add(file.name);
-      await LocalStorage.saveFiles(files);
-    }
-
-    return file.name;
   }
 }
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  FlutterError.onError = (
-    FlutterErrorDetails details,
-  ) {
+  FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-
-    DebugLog.error(
-      'Flutter framework error',
-      details.exception,
-      details.stack,
-    );
+    DebugLog.add('Flutter error: ${details.exception}');
   };
 
-  ui.PlatformDispatcher.instance.onError =
-      (Object error, StackTrace stack) {
-    DebugLog.error(
-      'Uncaught asynchronous error',
-      error,
-      stack,
-    );
-
+  ui.PlatformDispatcher.instance.onError = (error, stack) {
+    DebugLog.add('Unhandled error: $error');
     return true;
   };
 
-  DebugLog.add('Nexus AI started.');
-  DebugLog.add('OFFLINE MODE enabled.');
-  DebugLog.add('Backend connection disabled.');
-  DebugLog.add('Authentication disabled.');
+  DebugLog.add('Nexus AI started in offline mode.');
+  DebugLog.add('Authentication and backend API are disabled.');
 
-  runApp(
-    const App(),
-  );
+  runApp(const App());
 }
 
 class App extends StatelessWidget {
@@ -313,62 +197,61 @@ class App extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.deepPurple,
+        brightness: Brightness.light,
       ),
-
-      // Directly open Home.
-      //
-      // No Login screen.
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.deepPurple,
+        brightness: Brightness.dark,
+      ),
       home: const Home(),
     );
   }
 }
 
-/// Kept in the project as a page, but it is no longer required.
 class Login extends StatelessWidget {
   const Login({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(title: const Text('Nexus AI')),
       body: Center(
-        child: Card(
-          margin: const EdgeInsets.all(24),
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.lock_open,
-                  size: 56,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Authentication Disabled',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lock_open, size: 48),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Offline mode',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'This offline version does not require '
-                  'authentication.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const Home(),
-                      ),
-                    );
-                  },
-                  child: const Text('Open Nexus AI'),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Authentication is disabled in this build.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const Home(),
+                        ),
+                      );
+                    },
+                    child: const Text('Continue'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -385,17 +268,16 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  final TextEditingController input = TextEditingController();
+  final ScrollController chatScroll = ScrollController();
+
   int page = 0;
-
-  List<Map<String, dynamic>> msgs = [];
-
-  List<String> files = [];
-
-  final input = TextEditingController();
-
   bool loading = false;
 
-  final labels = [
+  List<Map<String, dynamic>> messages = <Map<String, dynamic>>[];
+  List<String> files = <String>[];
+
+  final List<String> labels = <String>[
     'Chats',
     'Projects',
     'Files',
@@ -405,45 +287,37 @@ class _HomeState extends State<Home> {
     'Settings',
   ];
 
-  final icons = [
-    Icons.chat,
-    Icons.folder,
-    Icons.description,
-    Icons.smart_toy,
-    Icons.search,
-    Icons.image,
-    Icons.settings,
+  final List<IconData> icons = <IconData>[
+    Icons.chat_bubble_outline,
+    Icons.folder_copy_outlined,
+    Icons.insert_drive_file_outlined,
+    Icons.smart_toy_outlined,
+    Icons.search_outlined,
+    Icons.image_outlined,
+    Icons.settings_outlined,
   ];
 
   @override
   void initState() {
     super.initState();
-
     loadLocalData();
   }
 
   Future<void> loadLocalData() async {
-    DebugLog.add(
-      'Loading local application data...',
-    );
+    final loadedMessages = await LocalStorage.loadMessages();
+    final loadedFiles = await LocalStorage.loadFiles();
 
-    final savedMessages =
-        await LocalStorage.loadMessages();
-
-    final savedFiles =
-        await LocalStorage.loadFiles();
-
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
-      msgs = savedMessages;
-      files = savedFiles;
+      messages = loadedMessages;
+      files = loadedFiles;
     });
 
     DebugLog.add(
-      'Local data loaded: '
-      '${msgs.length} messages, '
-      '${files.length} files.',
+      'Loaded ${messages.length} messages and ${files.length} files.',
     );
   }
 
@@ -457,570 +331,151 @@ class _HomeState extends State<Home> {
     input.clear();
 
     setState(() {
-      loading = true;
-
-      msgs.add({
+      messages.add(<String, dynamic>{
         'role': 'user',
-        'content': text,
+        'text': text,
+        'time': DateTime.now().toIso8601String(),
       });
+      loading = true;
     });
 
-    await LocalStorage.saveMessages(msgs);
+    await LocalStorage.saveMessages(messages);
+    DebugLog.add('Local message saved.');
 
-    DebugLog.add(
-      'Local message added.',
-    );
-
-    // Small delay to make the UI feel like an AI response.
-    await Future.delayed(
-      const Duration(milliseconds: 500),
-    );
-
-    final reply = LocalAI.generateReply(text);
-
-    if (!mounted) return;
-
-    setState(() {
-      msgs.add({
-        'role': 'assistant',
-        'content': reply,
-      });
-
-      loading = false;
-    });
-
-    await LocalStorage.saveMessages(msgs);
-
-    DebugLog.add(
-      'Local AI response generated.',
-    );
-  }
-
-  Future<void> attachFile() async {
     try {
-      final name = await LocalFiles.pickFile();
+      final reply = await LocalAI.generateReply(text);
 
-      if (name == null || !mounted) {
+      if (!mounted) {
         return;
       }
 
       setState(() {
-        if (!files.contains(name)) {
-          files.add(name);
-        }
+        messages.add(<String, dynamic>{
+          'role': 'assistant',
+          'text': reply,
+          'time': DateTime.now().toIso8601String(),
+        });
+        loading = false;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'File added locally: $name',
-          ),
-        ),
-      );
+      await LocalStorage.saveMessages(messages);
+      DebugLog.add('Offline response generated.');
+      _scrollChatToBottom();
+    } catch (e) {
+      DebugLog.add('Local AI error: $e');
 
-      DebugLog.add(
-        'File stored locally: $name',
-      );
-    } catch (e, st) {
-      DebugLog.error(
-        'Local file selection failed',
-        e,
-        st,
-      );
+      if (!mounted) {
+        return;
+      }
 
-      if (!mounted) return;
+      setState(() {
+        loading = false;
+        messages.add(<String, dynamic>{
+          'role': 'assistant',
+          'text': 'Offline processing failed: $e',
+          'time': DateTime.now().toIso8601String(),
+        });
+      });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not select file: $e',
-          ),
-        ),
-      );
+      await LocalStorage.saveMessages(messages);
     }
   }
 
-  Future<void> clearChat() async {
-    setState(() {
-      msgs.clear();
-    });
+  Future<void> attachFile() async {
+    final name = await LocalFiles.pickFile();
 
-    await LocalStorage.saveMessages(msgs);
-
-    DebugLog.add(
-      'Local chat history cleared.',
-    );
-  }
-
-  Future<void> clearLocalData() async {
-    await LocalStorage.clearAll();
-
-    if (!mounted) return;
-
-    setState(() {
-      msgs.clear();
-      files.clear();
-    });
-
-    DebugLog.add(
-      'All local data cleared.',
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Local data cleared.',
-        ),
-      ),
-    );
-  }
-
-  Widget chat() {
-    return Column(
-      children: [
-        Expanded(
-          child: msgs.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 64,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'What can I help you with today?',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Nexus AI is running in offline mode.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: msgs.length,
-                  itemBuilder: (context, index) {
-                    final message = msgs[index];
-
-                    final isUser =
-                        message['role'] == 'user';
-
-                    return Align(
-                      alignment: isUser
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 12,
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        constraints:
-                            const BoxConstraints(
-                          maxWidth: 700,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(16),
-                          color: isUser
-                              ? Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                        ),
-                        child: Text(
-                          message['content']
-                              ?.toString() ??
-                              '',
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-
-        if (loading)
-          const Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: 8,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  ),
-                  SizedBox(width: 10),
-                  Text('Thinking...'),
-                ],
-              ),
-            ),
-          ),
-
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Attach local file',
-                onPressed:
-                    loading ? null : attachFile,
-                icon: const Icon(
-                  Icons.attach_file,
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: input,
-                  onSubmitted: (_) => send(),
-                  minLines: 1,
-                  maxLines: 5,
-                  decoration:
-                      const InputDecoration(
-                    hintText: 'Ask anything...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                tooltip: 'Send',
-                onPressed:
-                    loading ? null : send,
-                icon: const Icon(
-                  Icons.send,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget projects() {
-    return _modulePage(
-      icon: Icons.folder,
-      title: 'Projects',
-      description:
-          'Projects are available in offline demo mode.',
-      child: FilledButton.icon(
-        onPressed: () {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Project creation is running locally.',
-              ),
-            ),
-          );
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Create Project'),
-      ),
-    );
-  }
-
-  Widget filesPage() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Files',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Files selected here stay on this device. '
-            'They are not uploaded to a backend.',
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: attachFile,
-            icon: const Icon(
-              Icons.upload_file,
-            ),
-            label: const Text(
-              'Select Local File',
-            ),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: files.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No local files selected.',
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: files.length,
-                    itemBuilder: (_, index) {
-                      return Card(
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.insert_drive_file,
-                          ),
-                          title: Text(
-                            files[index],
-                          ),
-                          subtitle:
-                              const Text(
-                            'Stored locally',
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget agents() {
-    return _modulePage(
-      icon: Icons.smart_toy,
-      title: 'Agents',
-      description:
-          'Agent interface is available without a backend.',
-      child: FilledButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Agent execution requires a backend or AI provider.',
-              ),
-            ),
-          );
-        },
-       turn;
-
-    setState(() {
-      msgs = savedMessages;
-      files = savedFiles;
-    });
-
-    DebugLog.add(
-      'Local data loaded: '
-      '${msgs.length} messages, '
-      '${files.length} files.',
-    );
-  }
-
-  Future<void> send() async {
-    final text = input.text.trim();
-
-    if (text.isEmpty || loading) {
+    if (name == null || name.isEmpty) {
       return;
     }
 
-    input.clear();
+    if (!mounted) {
+      return;
+    }
 
-    setState(() {
-      loading = true;
+    if (!files.contains(name)) {
+      files.add(name);
+      await LocalStorage.saveFiles(files);
 
-      msgs.add({
-        'role': 'user',
-        'content': text,
-      });
-    });
+      setState(() {});
 
-    await LocalStorage.saveMessages(msgs);
-
-    DebugLog.add(
-      'Local message added.',
-    );
-
-    // Small delay to make the UI feel like an AI response.
-    await Future.delayed(
-      const Duration(milliseconds: 500),
-    );
-
-    final reply = LocalAI.generateReply(text);
-
-    if (!mounted) return;
-
-    setState(() {
-      msgs.add({
-        'role': 'assistant',
-        'content': reply,
-      });
-
-      loading = false;
-    });
-
-    await LocalStorage.saveMessages(msgs);
-
-    DebugLog.add(
-      'Local AI response generated.',
-    );
-  }
-
-  Future<void> attachFile() async {
-    try {
-      final name = await LocalFiles.pickFile();
-
-      if (name == null || !mounted) {
-        return;
-      }
-
-      setState(() {
-        if (!files.contains(name)) {
-          files.add(name);
-        }
-      });
+      DebugLog.add('Added local file: $name');
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'File added locally: $name',
-          ),
-        ),
-      );
-
-      DebugLog.add(
-        'File stored locally: $name',
-      );
-    } catch (e, st) {
-      DebugLog.error(
-        'Local file selection failed',
-        e,
-        st,
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not select file: $e',
-          ),
-        ),
+        SnackBar(content: Text('Added $name')),
       );
     }
   }
 
   Future<void> clearChat() async {
     setState(() {
-      msgs.clear();
+      messages.clear();
     });
 
-    await LocalStorage.saveMessages(msgs);
-
-    DebugLog.add(
-      'Local chat history cleared.',
-    );
+    await LocalStorage.saveMessages(messages);
+    DebugLog.add('Chat history cleared.');
   }
 
   Future<void> clearLocalData() async {
     await LocalStorage.clearAll();
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
-      msgs.clear();
+      messages.clear();
       files.clear();
     });
 
-    DebugLog.add(
-      'All local data cleared.',
-    );
+    DebugLog.add('All local data cleared.');
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Local data cleared.',
-        ),
-      ),
+      const SnackBar(content: Text('Local data cleared.')),
     );
+  }
+
+  void _scrollChatToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!chatScroll.hasClients) {
+        return;
+      }
+
+      chatScroll.animateTo(
+        chatScroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Widget chat() {
     return Column(
       children: [
         Expanded(
-          child: msgs.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.auto_awesome,
-                          size: 64,
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          'What can I help you with today?',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Nexus AI is running in offline mode.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+          child: messages.isEmpty
+              ? _emptyChat()
               : ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: msgs.length,
+                  controller: chatScroll,
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                  itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    final message = msgs[index];
-
-                    final isUser =
-                        message['role'] == 'user';
+                    final message = messages[index];
+                    final role = message['role']?.toString() ?? 'assistant';
+                    final text = message['text']?.toString() ?? '';
+                    final isUser = role == 'user';
 
                     return Align(
                       alignment: isUser
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 12,
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        constraints:
-                            const BoxConstraints(
-                          maxWidth: 700,
+                        constraints: const BoxConstraints(maxWidth: 760),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(16),
                           color: isUser
                               ? Theme.of(context)
                                   .colorScheme
@@ -1028,160 +483,169 @@ class _HomeState extends State<Home> {
                               : Theme.of(context)
                                   .colorScheme
                                   .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(18),
                         ),
-                        child: Text(
-                          message['content']
-                              ?.toString() ??
-                              '',
-                        ),
+                        child: SelectableText(text),
                       ),
                     );
                   },
                 ),
         ),
-
         if (loading)
           const Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: 8,
-            ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  ),
-                  SizedBox(width: 10),
-                  Text('Thinking...'),
-                ],
-              ),
-            ),
+            padding: EdgeInsets.only(bottom: 8),
+            child: LinearProgressIndicator(),
           ),
-
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Attach local file',
-                onPressed:
-                    loading ? null : attachFile,
-                icon: const Icon(
-                  Icons.attach_file,
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: input,
-                  onSubmitted: (_) => send(),
-                  minLines: 1,
-                  maxLines: 5,
-                  decoration:
-                      const InputDecoration(
-                    hintText: 'Ask anything...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                tooltip: 'Send',
-                onPressed:
-                    loading ? null : send,
-                icon: const Icon(
-                  Icons.send,
-                ),
-              ),
-            ],
-          ),
-        ),
+        _composer(),
       ],
+    );
+  }
+
+  Widget _emptyChat() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.auto_awesome,
+              size: 72,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Nexus AI',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Offline mode',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Authentication and backend requests are disabled.\n'
+              'Your demo chat history is stored locally.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _composer() {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            IconButton(
+              tooltip: 'Attach file',
+              onPressed: attachFile,
+              icon: const Icon(Icons.attach_file),
+            ),
+            Expanded(
+              child: TextField(
+                controller: input,
+                minLines: 1,
+                maxLines: 5,
+                textInputAction: TextInputAction.newline,
+                onSubmitted: (_) => send(),
+                decoration: InputDecoration(
+                  hintText: 'Message Nexus AI...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              tooltip: 'Send',
+              onPressed: loading ? null : send,
+              icon: const Icon(Icons.arrow_upward),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget projects() {
     return _modulePage(
-      icon: Icons.folder,
+      icon: Icons.folder_copy_outlined,
       title: 'Projects',
-      description:
-          'Projects are available in offline demo mode.',
+      description: 'Create and organize projects locally.',
       child: FilledButton.icon(
         onPressed: () {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'Project creation is running locally.',
-              ),
+              content: Text('Project creation is available in offline demo mode.'),
             ),
           );
         },
         icon: const Icon(Icons.add),
-        label: const Text('Create Project'),
+        label: const Text('New Project'),
       ),
     );
   }
 
   Widget filesPage() {
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Files',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Files selected here stay on this device. '
-            'They are not uploaded to a backend.',
-          ),
-          const SizedBox(height: 24),
+          const Text('Selected file names are stored locally.'),
+          const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: attachFile,
-            icon: const Icon(
-              Icons.upload_file,
-            ),
-            label: const Text(
-              'Select Local File',
-            ),
+            icon: const Icon(Icons.upload_file),
+            label: const Text('Add File'),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           Expanded(
             child: files.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No local files selected.',
-                    ),
-                  )
-                : ListView.builder(
+                ? const Center(child: Text('No files added yet.'))
+                : ListView.separated(
                     itemCount: files.length,
-                    itemBuilder: (_, index) {
-                      return Card(
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.insert_drive_file,
-                          ),
-                          title: Text(
-                            files[index],
-                          ),
-                          subtitle:
-                              const Text(
-                            'Stored locally',
-                          ),
+                    separatorBuilder: (_, __) => const Divider(),
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        leading: const Icon(Icons.insert_drive_file_outlined),
+                        title: Text(files[index]),
+                        trailing: IconButton(
+                          tooltip: 'Remove',
+                          icon: const Icon(Icons.close),
+                          onPressed: () async {
+                            final removed = files.removeAt(index);
+                            await LocalStorage.saveFiles(files);
+
+                            if (mounted) {
+                              setState(() {});
+                            }
+
+                            DebugLog.add('Removed local file: $removed');
+                          },
                         ),
                       );
                     },
@@ -1194,209 +658,190 @@ class _HomeState extends State<Home> {
 
   Widget agents() {
     return _modulePage(
-      icon: Icons.smart_toy,
+      icon: Icons.smart_toy_outlined,
       title: 'Agents',
       description:
-          'Agent interface is available without a backend.',
+          'Local agent interface. Network-powered agents are disabled in this build.',
       child: FilledButton(
         onPressed: () {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(
+          setState(() {
+            page = 0;
+          });
+        },
+        child: const Text('Open Chat'),
+      ),
+    );
+  }
+
+  Widget research() {
+    return _modulePage(
+      icon: Icons.search_outlined,
+      title: 'Research',
+      description:
+          'Research requires internet access or a backend service. '
+          'This offline build provides the interface only.',
+      child: OutlinedButton.icon(
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'Agent execution requires a backend or AI provider.',
-              ),
+              content: Text('Research is disabled in offline mode.'),
             ),
           );
         },
-       ialized();
-
-  FlutterError.onError = (
-    FlutterErrorDetails details,
-  ) {
-    FlutterError.presentError(details);
-
-    DebugLog.error(
-      'Flutter framework error',
-      details.exception,
-      details.stack,
-    );
-  };
-
-  ui.PlatformDispatcher.instance.onError =
-      (Object error, StackTrace stack) {
-    DebugLog.error(
-      'Uncaught asynchronous error',
-      error,
-      stack,
-    );
-
-    return true;
-  };
-
-  DebugLog.add(
-    'Nexus AI started.',
-  );
-
-  DebugLog.add(
-    'API URL: $apiUrl',
-  );
-
-  try {
-    await api.load();
-  } catch (e, st) {
-    DebugLog.error(
-      'Startup storage error',
-      e,
-      st,
-    );
-  }
-
-  runApp(
-    const App(),
-  );
-}
-
-class App extends StatelessWidget {
-  const App({super.key});
-
-  @override
-  Widget build(BuildContext c) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Nexus AI',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.deepPurple,
+        icon: const Icon(Icons.info_outline),
+        label: const Text('Offline Mode'),
       ),
-      home: api.tok == null
-          ? const Login()
-          : const Home(),
     );
   }
-}
 
-class Login extends StatefulWidget {
-  const Login({super.key});
-
-  @override
-  State<Login> createState() => _LoginState();
-}
-
-class _LoginState extends State<Login> {
-  final e = TextEditingController();
-  final p = TextEditingController();
-
-  bool reg = false;
-  bool busy = false;
-
-  Future<void> go() async {
-    setState(() {
-      busy = true;
-    });
-
-    final ok = await api.auth(
-      reg ? '/auth/register' : '/auth/login',
-      e.text,
-      p.text,
+  Widget imagesPage() {
+    return _modulePage(
+      icon: Icons.image_outlined,
+      title: 'Images',
+      description:
+          'Image generation requires an image model or backend service. '
+          'This offline build keeps the page available.',
+      child: OutlinedButton.icon(
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Image generation is disabled in offline mode.'),
+            ),
+          );
+        },
+        icon: const Icon(Icons.info_outline),
+        label: const Text('Offline Mode'),
+      ),
     );
-
-    if (!mounted) return;
-
-    setState(() {
-      busy = false;
-    });
-
-    if (ok) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const Home(),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Authentication failed'),
-        ),
-      );
-    }
   }
 
-  @override
-  void dispose() {
-    e.dispose();
-    p.dispose();
-    super.dispose();
+  Widget settings() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text(
+          'Settings',
+          style: Theme.of(context).textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 20),
+        Card(
+          child: Column(
+            children: [
+              const ListTile(
+                leading: Icon(Icons.cloud_off_outlined),
+                title: Text('Backend'),
+                subtitle: Text('Disabled'),
+              ),
+              const Divider(height: 1),
+              const ListTile(
+                leading: Icon(Icons.lock_open_outlined),
+                title: Text('Authentication'),
+                subtitle: Text('Bypassed for offline mode'),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.bug_report_outlined),
+                title: const Text('Debug Console'),
+                subtitle: const Text('View local application logs'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DebugConsolePage(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.tonalIcon(
+          onPressed: clearChat,
+          icon: const Icon(Icons.delete_sweep_outlined),
+          label: const Text('Clear Chat'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () async {
+            final shouldClear = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) {
+                return AlertDialog(
+                  title: const Text('Clear all local data?'),
+                  content: const Text(
+                    'This removes locally stored chat history and file names.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext, false);
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext, true);
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                );
+              },
+            );
+
+            if (shouldClear == true) {
+              await clearLocalData();
+            }
+          },
+          icon: const Icon(Icons.delete_forever_outlined),
+          label: const Text('Clear All Local Data'),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Nexus AI offline build\n'
+          'No login or backend API is required to open the app.',
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
   }
 
-  @override
-  Widget build(BuildContext c) {
-    return Scaffold(
-      body: Center(
-        child: SizedBox(
-          width: 420,
+  Widget _modulePage({
+    required IconData icon,
+    required String title,
+    required String description,
+    required Widget child,
+  }) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 650),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(28),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.auto_awesome,
-                    size: 56,
+                  Icon(
+                    icon,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Nexus AI',
-                    style: TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  const SizedBox(height: 18),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
-                  TextField(
-                    controller: e,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: p,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Password',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: busy ? null : go,
-                      child: Text(
-                        busy
-                            ? 'Please wait'
-                            : reg
-                                ? 'Create account'
-                                : 'Sign in',
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        reg = !reg;
-                      });
-                    },
-                    child: Text(
-                      reg
-                          ? 'Already have an account? Sign in'
-                          : 'Create a new account',
-                    ),
-                  ),
+                  child,
                 ],
               ),
             ),
@@ -1405,340 +850,106 @@ class _LoginState extends State<Login> {
       ),
     );
   }
-}
 
-class Home extends StatefulWidget {
-  const Home({super.key});
-
-  @override
-  State<Home> createState() => _HomeState();
-}
-
-class _HomeState extends State<Home> {
-  int page = 0;
-  int cid = 0;
-
-  List chats = [];
-  List msgs = [];
-
-  final input = TextEditingController();
-
-  bool loading = false;
-
-  final labels = [
-    'Chats',
-    'Projects',
-    'Files',
-    'Agents',
-    'Research',
-    'Images',
-    'Settings',
-  ];
-
-  final icons = [
-    Icons.chat,
-    Icons.folder,
-    Icons.description,
-    Icons.smart_toy,
-    Icons.search,
-    Icons.image,
-    Icons.settings,
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    refresh();
-  }
-
-  Future<void> refresh() async {
-    try {
-      DebugLog.add(
-        'Refreshing chats...',
-      );
-
-      chats = await api.get('/chats');
-
-      if (chats.isEmpty) {
-        final x = await api.post(
-          '/chats',
-          {
-            'title': 'New Chat',
-          },
-        );
-
-        cid = x['id'];
-      } else {
-        cid = chats.first['id'];
-      }
-
-      await openChat();
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e, st) {
-      DebugLog.error(
-        'Chat refresh failed',
-        e,
-        st,
-      );
-
-      if (mounted) {
-        setState(() {});
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Backend error: $e'),
-          ),
-        );
-      }
+  Widget _currentPage() {
+    switch (page) {
+      case 0:
+        return chat();
+      case 1:
+        return projects();
+      case 2:
+        return filesPage();
+      case 3:
+        return agents();
+      case 4:
+        return research();
+      case 5:
+        return imagesPage();
+      case 6:
+        return settings();
+      default:
+        return chat();
     }
-  }
-
-  Future<void> openChat() async {
-    if (cid == 0) return;
-
-    final x = await api.get(
-      '/chats/$cid',
-    );
-
-    msgs = x['messages'];
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  Future<void> send() async {
-    final t = input.text.trim();
-
-    if (t.isEmpty) return;
-
-    input.clear();
-
-    setState(() {
-      loading = true;
-    });
-
-    try {
-      final x = await api.post(
-        '/chats/$cid/messages',
-        {
-          'message': t,
-          'model': 'auto',
-        },
-      );
-
-      msgs.add({
-        'role': 'user',
-        'content': t,
-      });
-
-      msgs.add({
-        'role': 'assistant',
-        'content': x['reply'],
-      });
-    } catch (e) {
-      msgs.add({
-        'role': 'assistant',
-        'content': 'Error: $e',
-      });
-    }
-
-    if (mounted) {
-      setState(() {
-        loading = false;
-      });
-    }
-  }
-
-  Widget chat() {
-    return Column(
-      children: [
-        Expanded(
-          child: msgs.isEmpty
-              ? const Center(
-                  child: Text(
-                    'What can I help you with today?',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: msgs.length,
-                  itemBuilder: (c, i) {
-                    final m = msgs[i];
-
-                    return Align(
-                      alignment: m['role'] == 'user'
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(
-                          bottom: 12,
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        constraints: const BoxConstraints(
-                          maxWidth: 700,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: m['role'] == 'user'
-                              ? Theme.of(c)
-                                  .colorScheme
-                                  .primaryContainer
-                              : Theme.of(c)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                        ),
-                        child: Text(
-                          m['content'],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: api.upload,
-                icon: const Icon(
-                  Icons.attach_file,
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: input,
-                  onSubmitted: (_) => send(),
-                  minLines: 1,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    hintText: 'Ask anything...',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: loading ? null : send,
-                icon: const Icon(
-                  Icons.send,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget placeholder(String x) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.auto_awesome,
-            size: 48,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            x,
-            style: const TextStyle(
-              fontSize: 24,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Module ready for the next integration step.',
-          ),
-        ],
-      ),
-    );
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 700;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Nexus AI · ${labels[page]}',
-        ),
+        title: Text('Nexus AI · ${labels[page]}'),
         actions: [
           IconButton(
+            tooltip: 'Debug Console',
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
                   builder: (_) => const DebugConsolePage(),
                 ),
               );
             },
-            icon: const Icon(
-              Icons.bug_report_outlined,
-            ),
+            icon: const Icon(Icons.bug_report_outlined),
           ),
-          IconButton(
-            onPressed: () async {
-              final sp =
-                  await SharedPreferences.getInstance();
-
-              await sp.remove('token');
-
-              if (mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const Login(),
-                  ),
-                );
-              }
-            },
-            icon: const Icon(
-              Icons.logout,
+          if (page == 0)
+            IconButton(
+              tooltip: 'Clear chat',
+              onPressed: messages.isEmpty ? null : clearChat,
+              icon: const Icon(Icons.delete_outline),
             ),
-          ),
         ],
       ),
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: page,
-            onDestinationSelected: (i) {
-              setState(() {
-                page = i;
-              });
-            },
-            labelType:
-                NavigationRailLabelType.all,
-            destinations: List.generate(
-              labels.length,
-              (i) => NavigationRailDestination(
-                icon: Icon(icons[i]),
-                label: Text(labels[i]),
+          if (!compact)
+            NavigationRail(
+              selectedIndex: page,
+              onDestinationSelected: (index) {
+                setState(() {
+                  page = index;
+                });
+              },
+              labelType: NavigationRailLabelType.all,
+              destinations: List<NavigationRailDestination>.generate(
+                labels.length,
+                (index) => NavigationRailDestination(
+                  icon: Icon(icons[index]),
+                  selectedIcon: Icon(icons[index]),
+                  label: Text(labels[index]),
+                ),
               ),
             ),
-          ),
           Expanded(
-            child: page == 0
-                ? chat()
-                : placeholder(labels[page]),
+            child: _currentPage(),
           ),
         ],
       ),
+      bottomNavigationBar: compact
+          ? NavigationBar(
+              selectedIndex: page,
+              onDestinationSelected: (index) {
+                setState(() {
+                  page = index;
+                });
+              },
+              destinations: List<NavigationDestination>.generate(
+                labels.length,
+                (index) => NavigationDestination(
+                  icon: Icon(icons[index]),
+                  selectedIcon: Icon(icons[index]),
+                  label: labels[index],
+                ),
+              ),
+            )
+          : null,
     );
   }
 
   @override
   void dispose() {
     input.dispose();
+    chatScroll.dispose();
     super.dispose();
   }
 }
-
