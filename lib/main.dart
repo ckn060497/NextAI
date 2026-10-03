@@ -1,4 +1,3 @@
-```dart
 import 'dart:ui' as ui;
 import 'dart:async';
 import 'dart:convert';
@@ -917,59 +916,89 @@ class _HomeState extends State<Home> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Module readyrue); final ok=await api.auth(reg?'/auth/register':'/auth/login',e.text,p.text); setState(()=>busy=false);
-    if(ok&&mounted)Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>const Home()));
-    else if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Authentication failed')));
+            'Module ready for the next integration step.',
+          ),
+        ],
+      ),
+    );
   }
-  @override Widget build(BuildContext c)=>Scaffold(body:Center(child:SizedBox(width:420,child:Card(child:Padding(padding:const EdgeInsets.all(28),child:Column(mainAxisSize:MainAxisSize.min,children:[
-    const Icon(Icons.auto_awesome,size:56),const SizedBox(height:12),const Text('Nexus AI',style:TextStyle(fontSize:30,fontWeight:FontWeight.bold)),
-    const SizedBox(height:24),TextField(controller:e,decoration:const InputDecoration(labelText:'Email',border:OutlineInputBorder())),
-    const SizedBox(height:12),TextField(controller:p,obscureText:true,decoration:const InputDecoration(labelText:'Password',border:OutlineInputBorder())),
-    const SizedBox(height:20),SizedBox(width:double.infinity,child:FilledButton(onPressed:busy?null:go,child:Text(busy?'Please wait':reg?'Create account':'Sign in'))),
-    TextButton(onPressed:()=>setState(()=>reg=!reg),child:Text(reg?'Already have an account? Sign in':'Create a new account'))
-  ])))));
+
+  @override
+  Widget build(BuildContext c) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Nexus AI · ${labels[page]}',
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DebugConsolePage(),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.bug_report_outlined,
+            ),
+          ),
+          IconButton(
+            onPressed: () async {
+              final sp =
+                  await SharedPreferences.getInstance();
+
+              await sp.remove('token');
+
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const Login(),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(
+              Icons.logout,
+            ),
+          ),
+        ],
+      ),
+      body: Row(
+        children: [
+          NavigationRail(
+            selectedIndex: page,
+            onDestinationSelected: (i) {
+              setState(() {
+                page = i;
+              });
+            },
+            labelType:
+                NavigationRailLabelType.all,
+            destinations: List.generate(
+              labels.length,
+              (i) => NavigationRailDestination(
+                icon: Icon(icons[i]),
+                label: Text(labels[i]),
+              ),
+            ),
+          ),
+          Expanded(
+            child: page == 0
+                ? chat()
+                : placeholder(labels[page]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    input.dispose();
+    super.dispose();
+  }
 }
 
-class Home extends StatefulWidget{const Home({super.key});State<Home> createState()=>_HomeState();}
-class _HomeState extends State<Home>{
-  int page=0,cid=0; List chats=[]; List msgs=[]; final input=TextEditingController(); bool loading=false;
-  final labels=['Chats','Projects','Files','Agents','Research','Images','Settings'];
-  final icons=[Icons.chat,Icons.folder,Icons.description,Icons.smart_toy,Icons.search,Icons.image,Icons.settings];
-  @override void initState(){super.initState();refresh();}
-  Future<void> refresh() async {
-    try {
-      DebugLog.add('Refreshing chats...');
-      chats = await api.get('/chats');
-      if (chats.isEmpty) {
-        final x = await api.post('/chats', {'title': 'New Chat'});
-        cid = x['id'];
-      } else {
-        cid = chats.first['id'];
-      }
-      await openChat();
-      if (mounted) setState(() {});
-    } catch (e, st) {
-      DebugLog.error('Chat refresh failed', e, st);
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Backend error: $e')),
-        );
-      }
-    }
-  }
-  Future<void> openChat() async {if(cid==0)return;final x=await api.get('/chats/$cid');msgs=x['messages'];setState((){});}
-  Future<void> send() async {final t=input.text.trim();if(t.isEmpty)return;input.clear();setState(()=>loading=true);
-    try{final x=await api.post('/chats/$cid/messages',{'message':t,'model':'auto'});msgs.add({'role':'user','content':t});msgs.add({'role':'assistant','content':x['reply']});}catch(e){msgs.add({'role':'assistant','content':'Error: $e'});}setState(()=>loading=false);}
-  Widget chat()=>Column(children:[
-    Expanded(child:msgs.isEmpty?const Center(child:Text('What can I help you with today?',style:TextStyle(fontSize:24,fontWeight:FontWeight.w600))):
-      ListView.builder(padding:const EdgeInsets.all(20),itemCount:msgs.length,itemBuilder:(c,i){final m=msgs[i];return Align(alignment:m['role']=='user'?Alignment.centerRight:Alignment.centerLeft,
-        child:Container(margin:const EdgeInsets.only(bottom:12),padding:const EdgeInsets.all(14),constraints:const BoxConstraints(maxWidth:700),
-          decoration:BoxDecoration(borderRadius:BorderRadius.circular(16),color:m['role']=='user'?Theme.of(c).colorScheme.primaryContainer:Theme.of(c).colorScheme.surfaceContainerHighest),child:Text(m['content'])));}),),
-    Padding(padding:const EdgeInsets.all(16),child:Row(children:[IconButton(onPressed:api.upload,icon:const Icon(Icons.attach_file)),Expanded(child:TextField(controller:input,onSubmitted:(_)=>send(),minLines:1,maxLines:5,decoration:const InputDecoration(hintText:'Ask anything...',border:OutlineInputBorder()))),IconButton(onPressed:loading?null:send,icon:const Icon(Icons.send))]))
-  ]);
-  Widget placeholder(String x)=>Center(child:Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.auto_awesome,size:48),const SizedBox(height:12),Text(x,style:const TextStyle(fontSize:24)),const SizedBox(height:8),const Text('Module ready for the next integration step.')]));
-  @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:Text('Nexus AI · ${labels[page]}'),actions:[IconButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>const DebugConsolePage())),icon:const Icon(Icons.bug_report_outlined)),IconButton(onPressed:()async{final sp=await SharedPreferences.getInstance();await sp.remove('token');if(mounted)Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>const Login()));},icon:const Icon(Icons.logout))]),
-    body:Row(children:[NavigationRail(selectedIndex:page,onDestinationSelected:(i)=>setState(()=>page=i),labelType:NavigationRailLabelType.all,
-      destinations:List.generate(labels.length,(i)=>NavigationRailDestination(icon:Icon(icons[i]),label:Text(labels[i])))),Expanded(child:page==0?chat():placeholder(labels[page]))]));
-}
