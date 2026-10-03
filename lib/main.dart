@@ -1,4 +1,3 @@
-```dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -435,6 +434,394 @@ class _HomeState extends State<Home> {
         await LocalStorage.loadFiles();
 
     if (!mounted) return;
+
+    setState(() {
+      msgs = savedMessages;
+      files = savedFiles;
+    });
+
+    DebugLog.add(
+      'Local data loaded: '
+      '${msgs.length} messages, '
+      '${files.length} files.',
+    );
+  }
+
+  Future<void> send() async {
+    final text = input.text.trim();
+
+    if (text.isEmpty || loading) {
+      return;
+    }
+
+    input.clear();
+
+    setState(() {
+      loading = true;
+
+      msgs.add({
+        'role': 'user',
+        'content': text,
+      });
+    });
+
+    await LocalStorage.saveMessages(msgs);
+
+    DebugLog.add(
+      'Local message added.',
+    );
+
+    // Small delay to make the UI feel like an AI response.
+    await Future.delayed(
+      const Duration(milliseconds: 500),
+    );
+
+    final reply = LocalAI.generateReply(text);
+
+    if (!mounted) return;
+
+    setState(() {
+      msgs.add({
+        'role': 'assistant',
+        'content': reply,
+      });
+
+      loading = false;
+    });
+
+    await LocalStorage.saveMessages(msgs);
+
+    DebugLog.add(
+      'Local AI response generated.',
+    );
+  }
+
+  Future<void> attachFile() async {
+    try {
+      final name = await LocalFiles.pickFile();
+
+      if (name == null || !mounted) {
+        return;
+      }
+
+      setState(() {
+        if (!files.contains(name)) {
+          files.add(name);
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'File added locally: $name',
+          ),
+        ),
+      );
+
+      DebugLog.add(
+        'File stored locally: $name',
+      );
+    } catch (e, st) {
+      DebugLog.error(
+        'Local file selection failed',
+        e,
+        st,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not select file: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> clearChat() async {
+    setState(() {
+      msgs.clear();
+    });
+
+    await LocalStorage.saveMessages(msgs);
+
+    DebugLog.add(
+      'Local chat history cleared.',
+    );
+  }
+
+  Future<void> clearLocalData() async {
+    await LocalStorage.clearAll();
+
+    if (!mounted) return;
+
+    setState(() {
+      msgs.clear();
+      files.clear();
+    });
+
+    DebugLog.add(
+      'All local data cleared.',
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Local data cleared.',
+        ),
+      ),
+    );
+  }
+
+  Widget chat() {
+    return Column(
+      children: [
+        Expanded(
+          child: msgs.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 64,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'What can I help you with today?',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Nexus AI is running in offline mode.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(20),
+                  itemCount: msgs.length,
+                  itemBuilder: (context, index) {
+                    final message = msgs[index];
+
+                    final isUser =
+                        message['role'] == 'user';
+
+                    return Align(
+                      alignment: isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(
+                          bottom: 12,
+                        ),
+                        padding: const EdgeInsets.all(14),
+                        constraints:
+                            const BoxConstraints(
+                          maxWidth: 700,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius:
+                              BorderRadius.circular(16),
+                          color: isUser
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
+                        ),
+                        child: Text(
+                          message['content']
+                              ?.toString() ??
+                              '',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              bottom: 8,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Text('Thinking...'),
+                ],
+              ),
+            ),
+          ),
+
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              IconButton(
+                tooltip: 'Attach local file',
+                onPressed:
+                    loading ? null : attachFile,
+                icon: const Icon(
+                  Icons.attach_file,
+                ),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: input,
+                  onSubmitted: (_) => send(),
+                  minLines: 1,
+                  maxLines: 5,
+                  decoration:
+                      const InputDecoration(
+                    hintText: 'Ask anything...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                tooltip: 'Send',
+                onPressed:
+                    loading ? null : send,
+                icon: const Icon(
+                  Icons.send,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget projects() {
+    return _modulePage(
+      icon: Icons.folder,
+      title: 'Projects',
+      description:
+          'Projects are available in offline demo mode.',
+      child: FilledButton.icon(
+        onPressed: () {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Project creation is running locally.',
+              ),
+            ),
+          );
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Create Project'),
+      ),
+    );
+  }
+
+  Widget filesPage() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Files',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Files selected here stay on this device. '
+            'They are not uploaded to a backend.',
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: attachFile,
+            icon: const Icon(
+              Icons.upload_file,
+            ),
+            label: const Text(
+              'Select Local File',
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: files.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No local files selected.',
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: files.length,
+                    itemBuilder: (_, index) {
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.insert_drive_file,
+                          ),
+                          title: Text(
+                            files[index],
+                          ),
+                          subtitle:
+                              const Text(
+                            'Stored locally',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget agents() {
+    return _modulePage(
+      icon: Icons.smart_toy,
+      title: 'Agents',
+      description:
+          'Agent interface is available without a backend.',
+      child: FilledButton(
+        onPressed: () {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Agent execution requires a backend or AI provider.',
+              ),
+            ),
+          );
+        },
+       turn;
 
     setState(() {
       msgs = savedMessages;
