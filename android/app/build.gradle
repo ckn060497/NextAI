@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.nexusai.nexus_ai"
-        minSdk = 21
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
