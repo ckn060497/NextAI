@@ -1,0 +1,9 @@
+{
+  "name": "Nexus AI",
+  "short_name": "Nexus AI",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "description": "Nexus AI"
+}
