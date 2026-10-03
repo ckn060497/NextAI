@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+GRADLE_VERSION="8.10.2"
+GRADLE_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}/nexus-ai-gradle/$GRADLE_VERSION"
+DIST="$GRADLE_HOME/gradle-$GRADLE_VERSION"
+if [ ! -x "$DIST/bin/gradle" ]; then
+  mkdir -p "$GRADLE_HOME"
+  TMP="$GRADLE_HOME/gradle.zip"
+  URL="https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+  echo "Downloading Gradle $GRADLE_VERSION..."
+  if command -v curl >/dev/null 2>&1; then curl -fL "$URL" -o "$TMP"; elif command -v wget >/dev/null 2>&1; then wget -O "$TMP" "$URL"; else echo "curl or wget is required to download Gradle." >&2; exit 1; fi
+  rm -rf "$DIST"
+  unzip -q "$TMP" -d "$GRADLE_HOME"
+  rm -f "$TMP"
+fi
+exec "$DIST/bin/gradle" "$@"
